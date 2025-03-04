@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,6 +16,8 @@ import (
 
 	"github.com/MsSabo/todo-app"
 	"github.com/MsSabo/todo-app/pkg/handler"
+	"github.com/MsSabo/todo-app/pkg/kafka"
+	"github.com/MsSabo/todo-app/pkg/metrics"
 	"github.com/MsSabo/todo-app/pkg/repository"
 	"github.com/MsSabo/todo-app/pkg/service"
 	"github.com/sirupsen/logrus"
@@ -32,7 +33,9 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		logrus.Fatalf("failed to initialize do: %s", err.Error())
 	}
+
 	fmt.Println("Env password = ", os.Getenv("DB_PASSWORD"))
+	time.Sleep(10 * time.Second)
 	db, err := repository.NewPostgresDB(repository.Config{
 		Host:     "db",
 		Port:     "5432",
@@ -46,9 +49,21 @@ func main() {
 		logrus.Fatalf("failed to initialize do: %s", err.Error())
 	}
 
+	producer, err := kafka.ConnectProducer([]string{"broker:29092"})
+
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create kafka producer : %s", err.Error()))
+	}
+
+	defer func() {
+		producer.Close()
+	}()
+
+	time.Sleep(time.Duration(10 * time.Second))
+
 	repository := repository.NewRepository(db)
 	service := service.NewService(repository)
-	handlers := handler.NewHandler(service)
+	handlers := handler.NewHandler(service, &producer)
 
 	srv := new(todo.Server)
 	go func() {
@@ -59,18 +74,41 @@ func main() {
 
 	logrus.Print("TodoApp Started")
 
-	time.Sleep(time.Duration(10 * time.Second))
-
-	// Push msg to kafka
-	if err := PushOrderToKafka("my-topic", []byte("Hello world")); err != nil {
-		logrus.Println("TodoApp error kafka: ", err)
+	worker, err := kafka.ConnectConsumer([]string{"broker:29092"})
+	if err != nil {
+		panic(err)
 	}
-	logrus.Print("TodoApp Msg sent")
+
+	consumer, err := worker.ConsumePartition("my-topic", 0, sarama.OffsetOldest)
+	if err != nil {
+		panic(err)
+	}
+
+	doneCh := make(chan struct{})
+
+	go func() {
+		for {
+			select {
+			case err := <-consumer.Errors():
+				fmt.Println(err)
+			case msg := <-consumer.Messages():
+				println("Msg : topic %s value %s ", msg.Topic, string(msg.Value))
+			case <-doneCh:
+				fmt.Println("End consumer worker")
+				break
+			}
+		}
+	}()
+
+	go func() {
+		_ = metrics.Listen("todo-app:8082")
+	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT)
 	<-quit
-
+	close(doneCh)
+	worker.Close()
 	logrus.Print("TodoApp Shutting Down")
 
 	if err := srv.Shutdown(context.Background()); err != nil {
@@ -87,45 +125,4 @@ func initConfig() error {
 	viper.AddConfigPath("configs")
 	viper.SetConfigName("config")
 	return viper.ReadInConfig()
-}
-
-func ConnectProducer(brokers []string) (sarama.SyncProducer, error) {
-	config := sarama.NewConfig()
-	config.Producer.Return.Successes = true
-	config.Producer.RequiredAcks = sarama.WaitForAll
-	config.Producer.Retry.Max = 5
-
-	return sarama.NewSyncProducer(brokers, config)
-}
-
-func PushOrderToKafka(topic string, msg []byte) error {
-
-	brokers := []string{"broker:29092"}
-	// Create connection
-	producer, err := ConnectProducer(brokers)
-	if err != nil {
-		return err
-	}
-
-	defer producer.Close()
-
-	// Create a new message
-	me := &sarama.ProducerMessage{
-		Topic: topic,
-		Value: sarama.StringEncoder(msg),
-	}
-
-	// Send message
-
-	partition, offset, err := producer.SendMessage(me)
-	if err != nil {
-		return err
-	}
-
-	log.Printf("Order is stored in topic(%s)/partition(%d)/offset(%d)\n",
-		topic,
-		partition,
-		offset)
-
-	return nil
 }

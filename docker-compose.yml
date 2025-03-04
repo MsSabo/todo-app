@@ -6,8 +6,11 @@ services:
     command: ./wait-for-db.sh db ./todo-app
     ports:
       - 8000:8000
+      - 8082:8082
     depends_on:
       - db
+      - prometheus
+      - broker
     environment:
       - DB_PASSWORD=qwerty
 
@@ -42,3 +45,9 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "19090:9090"

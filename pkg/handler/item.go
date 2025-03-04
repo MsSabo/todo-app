@@ -5,9 +5,18 @@ import (
 	"strconv"
 
 	"github.com/MsSabo/todo-app"
+	"github.com/MsSabo/todo-app/pkg/kafka"
+
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	create = "Create"
+	update = "Update"
+	delete = "Delete"
+)
+
+// / @todo Add kafka msg
 func (h *Handler) createItem(c *gin.Context) {
 	userId, err := getUserId(c)
 	if err != nil {
@@ -19,6 +28,8 @@ func (h *Handler) createItem(c *gin.Context) {
 		newErrorResponse(c, http.StatusBadRequest, "invalid user id")
 		return
 	}
+
+	kafka.PushOrderToKafka(h.producer, "my-topic", ([]byte)("create item msg"))
 
 	var input todo.TodoItem
 	if err := c.BindJSON(&input); err != nil {

@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/MsSabo/todo-app"
@@ -67,6 +68,10 @@ func (s *AuthService) ParseToken(accessToken string) (int, error) {
 	claims, ok := token.Claims.(*tokenClaims)
 	if !ok {
 		return 0, errors.New("token claims are not of type of *tokenClaims")
+	}
+
+	if s.repo.UpdateLastIn(claims.UserId) != nil {
+		log.Fatalf("Failed to update time userid = %d", claims.UserId)
 	}
 
 	return claims.UserId, nil

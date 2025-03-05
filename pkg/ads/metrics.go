@@ -27,9 +27,9 @@ var httpRequestDuration = promauto.NewHistogramVec(
 var usersActionsCounter = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "user_actions_total",
-		Help: "Total number of actions performed by users",
+		Help: "Total number of unique users. Resets every day",
 	},
-	[]string{"user_id"},
+	[]string{"active_users"},
 )
 
 func IncrementUserAction(id int) {

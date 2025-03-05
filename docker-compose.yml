@@ -9,7 +9,6 @@ services:
       - 8082:8082
     depends_on:
       - db
-      - prometheus
       - broker
     environment:
       - DB_PASSWORD=qwerty
@@ -51,3 +50,5 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
       - "19090:9090"
+    depends_on:
+      - todo-app

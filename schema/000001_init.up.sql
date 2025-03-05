@@ -3,7 +3,8 @@ CREATE TABLE users
     id serial not null unique,
     name varchar(255) not null,
     username varchar(255) not null unique,
-    password_hash varchar(255) not null
+    password_hash varchar(255) not null,
+    last_cmd timestamp default CURRENT_TIMESTAMP 
 );
 
 CREATE TABLE todo_lists 
@@ -27,7 +28,6 @@ CREATE TABLE todo_items
     description varchar(255),
     done boolean not null default false
 );
-
 
 CREATE TABLE lists_items
 (
